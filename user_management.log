@@ -1,0 +1,8 @@
+Sat Jul  6 16:50:48 UTC 2024 - Starting user creation process with input file: users.txt
+Sat Jul  6 16:50:48 UTC 2024 - Processing user: light with groups: sudo,dev,www-data
+Sat Jul  6 16:50:48 UTC 2024 - User light already exists.
+Sat Jul  6 16:50:48 UTC 2024 - Processing user: idimma with groups: sudo
+Sat Jul  6 16:50:48 UTC 2024 - User idimma already exists.
+Sat Jul  6 16:50:48 UTC 2024 - Processing user: mayowa with groups: dev,www-data
+Sat Jul  6 16:50:48 UTC 2024 - User mayowa already exists.
+Sat Jul  6 16:50:48 UTC 2024 - User creation and group assignment complete.
