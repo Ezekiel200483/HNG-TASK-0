@@ -1,77 +1,81 @@
-#!/bin/bash
+#!/bin/bashOOOoO
 
 # Check if the script is run as root
-if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root" 
-   exit 1
+if [ "$EUID" -ne 0 ]; then
+  echo "Please run as root"
+  exit 1
 fi
 
-# Check if the input file is provided
-if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 <name-of-text-file>"
-    exit 1
+# Check if filename is provided
+if [ -z "$1" ]; then
+  echo "Usage: $0 <user-data-file>"
+  exit 1
 fi
 
-INPUT_FILE="$1"
-LOG_FILE="./user_management.log"
-PASSWORD_FILE="./user_passwords.csv"
+# Variables
+user_data_file="$1"
+log_file="/var/log/user_management.log"
+password_file="/var/secure/user_passwords.txt"
 
-# Create the log and password files if they don't exist
-touch $LOG_FILE
-touch $PASSWORD_FILE
+# Create necessary directories and set permissions
+mkdir -p /var/secure
+chmod 700 /var/secure
 
-# Log the start time
-echo "$(date) - Starting user creation process with input file: $INPUT_FILE" >> $LOG_FILE
+# Clear or create log and password files
+> $log_file
+> $password_file
+chmod 600 $password_file
 
-# Read the input file line by line
-while IFS=';' read -r username groups; do
-    username=$(echo "$username" | xargs) # Trim any leading/trailing whitespace
-    groups=$(echo "$groups" | xargs)     # Trim any leading/trailing whitespace
+# Function to create a random password
+generate_password() {
+  openssl rand -base64 12
+}
 
-    echo "$(date) - Processing user: $username with groups: $groups" >> $LOG_FILE
+# Read user data file and process each line
+while IFS=";" read -r username groups; do
+  # Remove leading/trailing whitespaces
+  username=$(echo $username | xargs)
+  groups=$(echo $groups | xargs)
 
-    # Check if the user already exists
-    if id -u "$username" >/dev/null 2>&1; then
-        echo "$(date) - User $username already exists." >> $LOG_FILE
-        continue
-    fi
+  # Check if user already exists
+  if id "$username" &>/dev/null; then
+    echo "User $username already exists." | tee -a $log_file
+    continue
+  fi
 
-    # Create the user and their personal group
-    if useradd -m -s /bin/bash "$username"; then
-        echo "$(date) - User $username created." >> $LOG_FILE
-    else
-        echo "$(date) - Failed to create user $username." >> $LOG_FILE
-        continue
-    fi
+  # Create user with home directory
+  useradd -m -s /bin/bash $username
+  if [ $? -ne 0 ]; then
+    echo "Failed to create user $username." | tee -a $log_file
+    continue
+  fi
 
-    # Set a random password for the user
-    password=$(openssl rand -base64 12)
-    echo "$username:$password" | chpasswd
-    echo "$(date) - Password set for user $username." >> $LOG_FILE
+  # Create a personal group for the user
+  usermod -aG $username $username
 
-    # Store the username and password in the password file
-    echo "$username,$password" >> $PASSWORD_FILE
-
-    # Set ownership and permissions for the password file
-    chmod 600 $PASSWORD_FILE
-    chown root:root $PASSWORD_FILE
-
-    # Add user to the specified groups
-    IFS=',' read -ra group_array <<< "$groups"
-    for group in "${group_array[@]}"; do
-        group=$(echo "$group" | xargs) # Trim any leading/trailing whitespace
-        if ! getent group "$group" >/dev/null 2>&1; then
-            groupadd "$group"
-            echo "$(date) - Group $group created." >> $LOG_FILE
-        fi
-        usermod -aG "$group" "$username"
-        echo "$(date) - User $username added to group $group." >> $LOG_FILE
+  # Add user to additional groups
+  if [ -n "$groups" ]; then
+    IFS=',' read -ra group_list <<< "$groups"
+    for group in "${group_list[@]}"; do
+      group=$(echo $group | xargs)
+      if ! getent group $group &>/dev/null; then
+        groupadd $group
+      fi
+      usermod -aG $group $username
     done
-done < "$INPUT_FILE"
+  fi
 
-# Log the completion time
-echo "$(date) - User creation and group assignment complete." >> $LOG_FILE
+  # Set up home directory permissions
+  chmod 755 /home/$username
+  chown $username:$username /home/$username
 
-# Output the log and password file paths
-echo "User creation and group assignment complete. Check $LOG_FILE for details."
-echo "User passwords stored in $PASSWORD_FILE."
+  # Generate and set random password
+  password=$(generate_password)
+  echo "$username:$password" | chpasswd
+  echo "$username,$password" >> $password_file
+
+  # Log actions
+  echo "Created user $username with groups $groups" | tee -a $log_file
+done < "$user_data_file"
+
+echo "User creation process completed." | tee -a $log_file
